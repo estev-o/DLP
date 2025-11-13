@@ -5,7 +5,7 @@
 }
 
 rule token = parse
-    [' ' '\t']  { token lexbuf }
+    [' ' '\t' '\n']  { token lexbuf }
   | "lambda"    { LAMBDA }
   | "L"         { LAMBDA }
   | "true"      { TRUE }
@@ -19,6 +19,7 @@ rule token = parse
   | "let"       { LET }  
   | "letrec"    { LETREC }  (*RECUSIVIDAD*)
   | "in"        { IN }
+  | ";;"        { FIN }
   | "Bool"      { BOOL }
   | "Nat"       { NAT }
   | "Quit"      { QUIT }
@@ -33,4 +34,3 @@ rule token = parse
                 { IDV (Lexing.lexeme lexbuf) }
   | eof         { EOF }
   | _           { raise Lexical_error }
-

@@ -18,6 +18,7 @@
 %token BOOL
 %token NAT
 %token QUIT
+%token FIN
 
 %token LPAREN
 %token RPAREN
@@ -36,11 +37,15 @@
 %%
 
 s :
-    IDV COLON ty EQ term IN
+    command FIN EOF
+        { $1 }
+
+command :
+    IDV COLON ty EQ term
         { Bind ($1, $3, $5) }
-  | term EOF
+  | term
         { Eval $1 }
-  | QUIT EOF
+  | QUIT
         { Quit }
 
 term :
@@ -96,4 +101,3 @@ atomicTy :
       { TyBool }
   | NAT
       { TyNat }
-

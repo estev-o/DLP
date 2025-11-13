@@ -368,7 +368,6 @@ let rec eval1 ctx tm = match tm with
 let apply_ctx ctx tm =
   List.fold_left (fun t x -> subst x (getvbinding ctx x) t) tm (free_vars tm)
 ;;
-
 let rec eval ctx tm =
   try
     let tm' = eval1 ctx tm in
