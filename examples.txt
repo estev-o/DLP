@@ -16,3 +16,14 @@ let id_nat = L x:Nat. x in id_nat 5
 let x = 5 in let id_nat = L x:Nat. x in id_nat x
 let fix = lambda f.(lambda x. f (lambda y. x x y)) (lambda x. f (lambda y. x x y)) in let sumaux = lambda f. (lambda n. (lambda m. if (iszero n) then m else succ (f (pred n) m))) in let sum = fix sumaux in sum 21 34
 let fix = lambda f.(lambda x. f (lambda y. x x y)) (lambda x. f (lambda y. x x y)) in let sumaux = lambda f. (lambda n. (lambda m. if (iszero n) then m else succ (f (pred n) m))) in let sum = fix sumaux in let prodaux = lambda f. (lambda n. (lambda m. if (iszero m) then 0 else sum n (f n (pred m)))) in let prod = fix prodaux in prod 12 5
+
+
+STRING
+"hello, world!"
+x : String = "hello, world!"
+TUPLES
+{1, "text", true}
+(lambda x:Nat. lambda y:String. lambda z:Bool. {x, y, z}) 1 "text" true
+x : {String, Nat} = {"text", 1}
+x.1
+x.2

@@ -1,11 +1,11 @@
-
-(* TYPE DEFINITIONS *)
-
 type ty =
     TyBool
   | TyNat
   | TyArr of ty * ty
+  | TyString
+  | TyTuple of ty list 
 ;;
+
 
 type term =
     TmTrue
@@ -20,7 +20,12 @@ type term =
   | TmApp of term * term
   | TmLetIn of string * term * term
   | TmFix of term (* RECUSIVIDAD*)
+  | TmString of string
+  | TmConcat of term * term 
+  | TmTuple of term list
+  | TmProj of term * int
 ;;
+
 type command =
     Eval of term
   | Bind of string * ty * term
@@ -69,6 +74,15 @@ let rec string_of_ty ty = match ty with
       "Nat"
   | TyArr (ty1, ty2) ->
       "(" ^ string_of_ty ty1 ^ ")" ^ " -> " ^ "(" ^ string_of_ty ty2 ^ ")"
+  | TyString ->
+      "String"
+  | TyTuple ty_list ->
+      let string_of_ty_list list =
+        list
+        |> List.map string_of_ty
+        |> String.concat ", "
+      in
+      "{" ^ string_of_ty_list ty_list ^ "}"
 ;;
 
 exception Type_error of string
@@ -146,6 +160,26 @@ let rec typeof ctx tm = match tm with
              if tyT11 = tyT12 then tyT12
              else raise (Type_error "result of body not compatible with domain")
          | _ -> raise (Type_error "arrow type expected"))
+  | TmString _ ->
+      TyString
+  | TmConcat (t1, t2) ->
+      if typeof ctx t1 = TyString && typeof ctx t2 = TyString then TyString
+      else raise (Type_error "argument of concat is not a string")
+  (* T-TUPLE *)
+  | TmTuple t1 ->
+      let ty_list = List.map (fun t -> typeof ctx t) t1 in
+      TyTuple ty_list
+  (* T-PROJ *)
+  | TmProj (t, i) ->
+      let ty_t = typeof ctx t in
+      (match ty_t with
+          TyTuple ty_list-> 
+            if i > 0 && i <= List.length ty_list then
+              List.nth ty_list (i - 1)
+            else
+              raise (Type_error "Index out of bounds")
+        | _ -> raise (Type_error "Term projected is not a tuple"))
+
 ;;
 
 
@@ -183,6 +217,21 @@ let rec string_of_term = function
   (* RECURSIVIDAD*)
   | TmFix t ->
       "(fix " ^ string_of_term t ^ ")"
+  | TmString s ->
+      "\"" ^ s ^ "\""
+  | TmConcat (t1, t2) ->
+      "concat " ^ "(" ^ string_of_term t1 ^ ")" ^ " " ^ "(" ^ string_of_term t2 ^ ")"
+  | TmTuple term_list ->
+      let string_of_term_list term_list =
+        term_list
+        |> List.map string_of_term
+        |> String.concat ", "
+      in
+      "{" ^ string_of_term_list term_list ^ "}"
+
+    (* TmProj *)
+  | TmProj (t, i) ->
+      "(" ^ string_of_term t ^ ")." ^ string_of_int i
 ;;
 
 let rec ldif l1 l2 = match l1 with
@@ -220,6 +269,16 @@ let rec free_vars tm = match tm with
       lunion (ldif (free_vars t2) [s]) (free_vars t1)
   (* RECUSIVIDAD *)
   | TmFix t ->
+      free_vars t
+  | TmString _ ->
+      []
+  | TmConcat (t1, t2) -> 
+      lunion (free_vars t1) (free_vars t2)
+
+  | TmTuple term_list -> 
+      List.fold_left lunion [] (List.map free_vars term_list)
+
+  | TmProj (t, i) ->
       free_vars t
 ;;
 
@@ -263,6 +322,16 @@ let rec subst x s tm = match tm with
   (* RECUSIVIDAD *)
   | TmFix t1 ->
       TmFix (subst x s t1)
+  | TmString st ->
+      TmString st
+  | TmConcat (t1, t2) -> 
+      TmConcat (subst x s t1, subst x s t2)
+
+  | TmTuple term_list ->
+      TmTuple (List.map (subst x s) term_list)
+
+  | TmProj (t, i) ->
+      TmProj (subst x s t, i)
 ;;
 
 let rec isnumericval tm = match tm with
@@ -275,7 +344,9 @@ let rec isval tm = match tm with
     TmTrue  -> true
   | TmFalse -> true
   | TmAbs _ -> true
+  | TmString _ -> true
   | t when isnumericval t -> true
+  | TmTuple term_list ->  List.for_all isval term_list
   | _ -> false
 ;;
 
@@ -360,6 +431,41 @@ let rec eval1 ctx tm = match tm with
 
   | TmVar s ->
     getvbinding ctx s
+
+  | TmConcat (TmString s1, TmString s2) -> 
+      TmString (s1 ^ s2)
+  
+  | TmConcat (TmString s1, t2) ->
+      let t2' = eval1 ctx t2 in
+      TmConcat (TmString s1, t2')
+
+  | TmConcat (t1, t2) ->
+      let t1' = eval1 ctx t1 in
+      TmConcat (t1', t2)
+
+  (* E-ProjTuple*)
+  | TmProj (TmTuple t, i) ->
+      List.nth t (i-1)
+
+  (* E-PROJ *)
+  | TmProj (t, i) ->
+      let t' = eval1 ctx t in
+      TmProj (t', i)
+  
+  (* E-TUPLE *)
+ | TmTuple term_list ->
+      let rec aux evaluated remaining =
+        match remaining with
+        | [] ->
+            raise NoRuleApplies
+        | t :: rest_of_terms ->
+            if isval t then
+              aux (t :: evaluated) rest_of_terms
+            else
+              let t' = eval1 ctx t in 
+              TmTuple ((List.rev evaluated) @ [t'] @ rest_of_terms)
+      in
+      aux [] term_list
 
   | _ ->
       raise NoRuleApplies

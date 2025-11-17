@@ -21,4 +21,4 @@ main: main.ml
 	ocamlc -c main.ml
 
 clean:
-	rm -f lexer.ml parser.mli parser.ml *.cmi *.cmo *~
+	rm -f lexer.ml parser.mli parser.ml *.cmi *.cmo *~ top
