@@ -185,53 +185,65 @@ let rec typeof ctx tm = match tm with
 
 (* TERMS MANAGEMENT (EVALUATION) *)
 
-let rec string_of_term = function
-    TmTrue ->
-      "true"
-  | TmFalse ->
-      "false"
-  | TmIf (t1,t2,t3) ->
-      "if " ^ "(" ^ string_of_term t1 ^ ")" ^
-      " then " ^ "(" ^ string_of_term t2 ^ ")" ^
-      " else " ^ "(" ^ string_of_term t3 ^ ")"
-  | TmZero ->
-      "0"
-  | TmSucc t ->
-     let rec f n t' = match t' with
-          TmZero -> string_of_int n
-        | TmSucc s -> f (n+1) s
-        | _ -> "succ " ^ "(" ^ string_of_term t ^ ")"
-      in f 1 t
-  | TmPred t ->
-      "pred " ^ "(" ^ string_of_term t ^ ")"
-  | TmIsZero t ->
-      "iszero " ^ "(" ^ string_of_term t ^ ")"
-  | TmVar s ->
-      s
-  | TmAbs (s, tyS, t) ->
-      "(lambda " ^ s ^ ":" ^ string_of_ty tyS ^ ". " ^ string_of_term t ^ ")"
-  | TmApp (t1, t2) ->
-      "(" ^ string_of_term t1 ^ " " ^ string_of_term t2 ^ ")"
-  | TmLetIn (s, t1, t2) ->
-      "let " ^ s ^ " = " ^ string_of_term t1 ^ " in " ^ string_of_term t2
-  (* RECURSIVIDAD*)
-  | TmFix t ->
-      "(fix " ^ string_of_term t ^ ")"
-  | TmString s ->
-      "\"" ^ s ^ "\""
-  | TmConcat (t1, t2) ->
-      "concat " ^ "(" ^ string_of_term t1 ^ ")" ^ " " ^ "(" ^ string_of_term t2 ^ ")"
-  | TmTuple term_list ->
-      let string_of_term_list term_list =
-        term_list
-        |> List.map string_of_term
-        |> String.concat ", "
-      in
-      "{" ^ string_of_term_list term_list ^ "}"
+let rec nat_value = function
+    TmZero -> Some 0
+  | TmSucc t -> (match nat_value t with Some n -> Some (n+1) | None -> None)
+  | _ -> None
+;;
 
-    (* TmProj *)
-  | TmProj (t, i) ->
-      "(" ^ string_of_term t ^ ")." ^ string_of_int i
+let rec string_of_term tm =
+  let open Format in
+  let prec_if = 1 and prec_abs = 1 and prec_let = 1 and prec_app = 3 and prec_proj = 4 and prec_atom = 5 in
+  let rec pp_term prec fmt t =
+    let needs_paren my_prec = my_prec < prec in
+    let paren my_prec printer =
+      let wrap = needs_paren my_prec in
+      if wrap then fprintf fmt "(";
+      printer ();
+      if wrap then fprintf fmt ")"
+    in
+    match nat_value t with
+    | Some n -> fprintf fmt "%d" n
+    | None ->
+    match t with
+    | TmTrue -> fprintf fmt "true"
+    | TmFalse -> fprintf fmt "false"
+    | TmString s -> fprintf fmt "\"%s\"" s
+    | TmVar s -> fprintf fmt "%s" s
+    | TmTuple ts ->
+        let rec pp_elems fmt = function
+          | [] -> ()
+          | [x] -> fprintf fmt "%a" (pp_term prec_atom) x
+          | x :: xs -> fprintf fmt "%a, %a" (pp_term prec_atom) x pp_elems xs
+        in
+        fprintf fmt "{%a}" pp_elems ts
+    | TmProj (t', i) ->
+        paren prec_proj (fun () -> fprintf fmt "%a.%d" (pp_term prec_proj) t' i)
+    | TmIf (t1, t2, t3) ->
+        paren prec_if (fun () ->
+          fprintf fmt "@[<v 2>if %a@ then %a@ else %a@]"
+            (pp_term prec_if) t1 (pp_term prec_if) t2 (pp_term prec_if) t3)
+    | TmLetIn (s, t1, t2) ->
+        paren prec_let (fun () ->
+          fprintf fmt "@[<v 2>let %s = %a@ in %a@]" s (pp_term prec_let) t1 (pp_term prec_let) t2)
+    | TmAbs (s, tyS, t') ->
+        paren prec_abs (fun () ->
+          fprintf fmt "@[<2>lambda %s:%s.@ %a@]" s (string_of_ty tyS) (pp_term prec_abs) t')
+    | TmApp (t1, t2) ->
+        paren prec_app (fun () -> fprintf fmt "@[<2>%a@ %a@]" (pp_term prec_app) t1 (pp_term (prec_app+1)) t2)
+    | TmConcat (t1, t2) ->
+        paren prec_app (fun () -> fprintf fmt "@[<2>concat@ %a@ %a@]" (pp_term (prec_app+1)) t1 (pp_term (prec_app+1)) t2)
+    | TmFix t' ->
+        paren prec_app (fun () -> fprintf fmt "@[<2>fix@ %a@]" (pp_term (prec_app+1)) t')
+    | TmSucc t' ->
+        paren prec_app (fun () -> fprintf fmt "@[<2>succ@ %a@]" (pp_term (prec_app+1)) t')
+    | TmPred t' ->
+        paren prec_app (fun () -> fprintf fmt "@[<2>pred@ %a@]" (pp_term (prec_app+1)) t')
+    | TmIsZero t' ->
+        paren prec_app (fun () -> fprintf fmt "@[<2>iszero@ %a@]" (pp_term (prec_app+1)) t')
+    | TmZero -> assert false
+  in
+  Format.asprintf "%a" (pp_term 0) tm
 ;;
 
 let rec ldif l1 l2 = match l1 with
@@ -498,4 +510,3 @@ let execute ctx = function
         raise (Type_error ("Type mismatch in binding: expected " ^ string_of_ty ty ^ " but got " ^ string_of_ty tyTm))
   | Quit ->
     raise End_of_file
-
