@@ -96,6 +96,23 @@ let rec string_of_ty ty = match ty with
 exception Type_error of string
 ;;
 
+let rec subtype tyS tyT =
+  (* structural subtyping for tuples and contravariant functions *)
+  if tyS = tyT then true else
+  match tyS, tyT with
+  | TyArr (s1, s2), TyArr (t1, t2) -> subtype t1 s1 && subtype s2 t2
+  | TyTuple s_list, TyTuple t_list ->
+      (* allow width and depth: a longer tuple can be a subtype if it has at least the fields of the target with compatible types *)
+      let rec aux sl tl =
+        match tl, sl with
+        | [], _ -> true (* source can have extra components *)
+        | _, [] -> false
+        | t_hd :: t_tl, s_hd :: s_tl -> subtype s_hd t_hd && aux s_tl t_tl
+      in
+      aux s_list t_list
+  | _ -> false
+;;
+
 let rec typeof ctx tm = match tm with
     (* T-True *)
     TmTrue ->
@@ -150,7 +167,7 @@ let rec typeof ctx tm = match tm with
       let tyT2 = typeof ctx t2 in
       (match tyT1 with
            TyArr (tyT11, tyT12) ->
-             if tyT2 = tyT11 then tyT12
+             if subtype tyT2 tyT11 then tyT12
              else raise (Type_error "parameter type mismatch")
          | _ -> raise (Type_error "arrow type expected"))
 
@@ -160,12 +177,12 @@ let rec typeof ctx tm = match tm with
       let ctx' = addtbinding ctx x tyT1 in
       typeof ctx' t2
 
-    (* T-Fix RECURSIVIDAD*) 
+  (* T-Fix RECURSIVIDAD*) 
   | TmFix t1 ->
       let tyT1 = typeof ctx t1 in
       (match tyT1 with
            TyArr (tyT11, tyT12) ->
-             if tyT11 = tyT12 then tyT12
+             if subtype tyT12 tyT11 then tyT12
              else raise (Type_error "result of body not compatible with domain")
          | _ -> raise (Type_error "arrow type expected"))
   | TmString _ ->
@@ -604,7 +621,7 @@ let execute ctx = function
       ctx
   | Bind (s, ty, tm) ->
       let tyTm = typeof ctx tm in
-      if tyTm = ty then
+      if subtype tyTm ty then
         let tm' = eval ctx tm in
         print_endline (s ^ " : " ^ string_of_ty tyTm ^ " = " ^ string_of_term tm');
         addvbinding ctx s tyTm tm'

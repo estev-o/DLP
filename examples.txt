@@ -45,3 +45,10 @@ letrec map : (Nat -> Nat) -> List Nat -> List Nat =
   lambda f: Nat -> Nat. lambda l: List Nat.
     if isnil l then nil Nat else cons (f (head l)) (map f (tail l))
 in map (lambda x:Nat. succ x) (cons 1 (cons 2 (nil Nat)))
+
+SUBTYPING
+let f = lambda t: {Nat}. t.1 in f {1, true}
+let use = lambda g: ({Nat, Bool}) -> Nat. g {0, true} in let short = lambda t:{Nat}. t.1 in use short
+letrec map : (Nat -> Nat) -> List Nat -> List Nat =
+  lambda f: Nat -> Nat. lambda l: List Nat.
+    if isnil l then nil Nat else cons (f (head l)) (map f (tail l))
