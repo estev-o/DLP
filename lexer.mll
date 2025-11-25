@@ -16,6 +16,11 @@ rule token = parse
   | "succ"      { SUCC }
   | "pred"      { PRED }
   | "iszero"    { ISZERO }
+  | "isnil"     { ISNIL }
+  | "head"      { HEAD }
+  | "tail"      { TAIL }
+  | "cons"      { CONS }
+  | "nil"       { NIL }
   | "let"       { LET }  
   | "letrec"    { LETREC }  (*RECUSIVIDAD*)
   | "in"        { IN }
@@ -23,6 +28,7 @@ rule token = parse
   | ";;"        { FIN }
   | "Bool"      { BOOL }
   | "Nat"       { NAT }
+  | "List"      { LIST }
   | "String"    { STRING }
   | "Quit"      { QUIT }
   | '('         { LPAREN }

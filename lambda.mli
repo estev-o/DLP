@@ -3,6 +3,7 @@ type ty =
   | TyNat
   | TyArr of ty * ty
   | TyString
+  | TyList of ty
   | TyTuple of ty list 
 ;;
 
@@ -24,6 +25,11 @@ type term =
   | TmConcat of term * term 
   | TmTuple of term list
   | TmProj of term * int
+  | TmNil of ty
+  | TmCons of term * term
+  | TmIsNil of term
+  | TmHead of term
+  | TmTail of term
 ;;
 
 (* COMMAND *)

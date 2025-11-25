@@ -3,6 +3,7 @@ type ty =
   | TyNat
   | TyArr of ty * ty
   | TyString
+  | TyList of ty
   | TyTuple of ty list 
 ;;
 
@@ -24,6 +25,11 @@ type term =
   | TmConcat of term * term 
   | TmTuple of term list
   | TmProj of term * int
+  | TmNil of ty
+  | TmCons of term * term
+  | TmIsNil of term
+  | TmHead of term
+  | TmTail of term
 ;;
 
 type command =
@@ -76,6 +82,8 @@ let rec string_of_ty ty = match ty with
       "(" ^ string_of_ty ty1 ^ ")" ^ " -> " ^ "(" ^ string_of_ty ty2 ^ ")"
   | TyString ->
       "String"
+  | TyList ty ->
+      "List " ^ string_of_ty ty
   | TyTuple ty_list ->
       let string_of_ty_list list =
         list
@@ -180,6 +188,28 @@ let rec typeof ctx tm = match tm with
               raise (Type_error "Index out of bounds")
         | _ -> raise (Type_error "Term projected is not a tuple"))
 
+  | TmNil ty_elem ->
+      TyList ty_elem
+  | TmCons (t1, t2) ->
+      let ty_head = typeof ctx t1 in
+      let ty_tail = typeof ctx t2 in
+      (match ty_tail with
+       | TyList ty_elem when ty_elem = ty_head -> TyList ty_elem
+       | TyList _ -> raise (Type_error "type of head and tail of cons differ")
+       | _ -> raise (Type_error "tail of cons is not a list"))
+  | TmIsNil t1 ->
+      (match typeof ctx t1 with
+       | TyList _ -> TyBool
+       | _ -> raise (Type_error "argument of isnil is not a list"))
+  | TmHead t1 ->
+      (match typeof ctx t1 with
+       | TyList ty_elem -> ty_elem
+       | _ -> raise (Type_error "argument of head is not a list"))
+  | TmTail t1 ->
+      (match typeof ctx t1 with
+       | TyList ty_elem -> TyList ty_elem
+       | _ -> raise (Type_error "argument of tail is not a list"))
+
 ;;
 
 
@@ -194,6 +224,11 @@ let rec nat_value = function
 let rec string_of_term tm =
   let open Format in
   let prec_if = 1 and prec_abs = 1 and prec_let = 1 and prec_app = 3 and prec_proj = 4 and prec_atom = 5 in
+  let rec as_list = function
+    | TmNil _ -> Some []
+    | TmCons (h, t') -> (match as_list t' with Some tl -> Some (h :: tl) | None -> None)
+    | _ -> None
+  in
   let rec pp_term prec fmt t =
     let needs_paren my_prec = my_prec < prec in
     let paren my_prec printer =
@@ -241,6 +276,24 @@ let rec string_of_term tm =
         paren prec_app (fun () -> fprintf fmt "@[<2>pred@ %a@]" (pp_term (prec_app+1)) t')
     | TmIsZero t' ->
         paren prec_app (fun () -> fprintf fmt "@[<2>iszero@ %a@]" (pp_term (prec_app+1)) t')
+    | TmNil _ -> fprintf fmt "nil"
+    | TmCons (h, tl) as tlist ->
+        (match as_list tlist with
+         | Some elems ->
+             let rec pp_list fmt = function
+               | [] -> ()
+               | [x] -> fprintf fmt "%a" (pp_term prec_atom) x
+               | x :: xs -> fprintf fmt "%a; %a" (pp_term prec_atom) x pp_list xs
+             in
+             fprintf fmt "[%a]" pp_list elems
+         | None ->
+             paren prec_app (fun () -> fprintf fmt "@[<2>cons@ %a@ %a@]" (pp_term (prec_app+1)) h (pp_term (prec_app+1)) tl))
+    | TmIsNil t' ->
+        paren prec_app (fun () -> fprintf fmt "@[<2>isnil@ %a@]" (pp_term (prec_app+1)) t')
+    | TmHead t' ->
+        paren prec_app (fun () -> fprintf fmt "@[<2>head@ %a@]" (pp_term (prec_app+1)) t')
+    | TmTail t' ->
+        paren prec_app (fun () -> fprintf fmt "@[<2>tail@ %a@]" (pp_term (prec_app+1)) t')
     | TmZero -> assert false
   in
   Format.asprintf "%a" (pp_term 0) tm
@@ -292,6 +345,16 @@ let rec free_vars tm = match tm with
 
   | TmProj (t, i) ->
       free_vars t
+  | TmNil _ ->
+      []
+  | TmCons (t1, t2) ->
+      lunion (free_vars t1) (free_vars t2)
+  | TmIsNil t1 ->
+      free_vars t1
+  | TmHead t1 ->
+      free_vars t1
+  | TmTail t1 ->
+      free_vars t1
 ;;
 
 let rec fresh_name x l =
@@ -344,6 +407,16 @@ let rec subst x s tm = match tm with
 
   | TmProj (t, i) ->
       TmProj (subst x s t, i)
+  | TmNil ty_elem ->
+      TmNil ty_elem
+  | TmCons (t1, t2) ->
+      TmCons (subst x s t1, subst x s t2)
+  | TmIsNil t1 ->
+      TmIsNil (subst x s t1)
+  | TmHead t1 ->
+      TmHead (subst x s t1)
+  | TmTail t1 ->
+      TmTail (subst x s t1)
 ;;
 
 let rec isnumericval tm = match tm with
@@ -359,6 +432,8 @@ let rec isval tm = match tm with
   | TmString _ -> true
   | t when isnumericval t -> true
   | TmTuple term_list ->  List.for_all isval term_list
+  | TmNil _ -> true
+  | TmCons (t1, t2) -> isval t1 && isval t2
   | _ -> false
 ;;
 
@@ -454,6 +529,33 @@ let rec eval1 ctx tm = match tm with
   | TmConcat (t1, t2) ->
       let t1' = eval1 ctx t1 in
       TmConcat (t1', t2)
+
+  | TmCons (t1, t2) when not (isval t1) ->
+      let t1' = eval1 ctx t1 in
+      TmCons (t1', t2)
+  | TmCons (v1, t2) when isval v1 ->
+      let t2' = eval1 ctx t2 in
+      TmCons (v1, t2')
+
+  | TmIsNil (TmNil _) ->
+      TmTrue
+  | TmIsNil (TmCons _) ->
+      TmFalse
+  | TmIsNil t1 ->
+      let t1' = eval1 ctx t1 in
+      TmIsNil t1'
+
+  | TmHead (TmCons (v1, v2)) when isval v1 && isval v2 ->
+      v1
+  | TmHead t1 ->
+      let t1' = eval1 ctx t1 in
+      TmHead t1'
+
+  | TmTail (TmCons (v1, v2)) when isval v1 && isval v2 ->
+      v2
+  | TmTail t1 ->
+      let t1' = eval1 ctx t1 in
+      TmTail t1'
 
   (* E-ProjTuple*)
   | TmProj (TmTuple t, i) ->

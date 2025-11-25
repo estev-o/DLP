@@ -27,3 +27,21 @@ TUPLES
 x : {String, Nat} = {"text", 1}
 x.1
 x.2
+
+LISTS
+nil Nat
+cons 1 (nil Nat)
+letrec length : List Nat -> Nat =
+  lambda l: List Nat.
+    if isnil l then 0 else succ (length (tail l))
+in length (cons 1 (cons 2 (nil Nat)))
+
+letrec append : List Nat -> List Nat -> List Nat =
+  lambda l1: List Nat. lambda l2: List Nat.
+    if isnil l1 then l2 else cons (head l1) (append (tail l1) l2)
+in append (cons 1 (cons 2 (nil Nat))) (cons 3 (nil Nat))
+
+letrec map : (Nat -> Nat) -> List Nat -> List Nat =
+  lambda f: Nat -> Nat. lambda l: List Nat.
+    if isnil l then nil Nat else cons (f (head l)) (map f (tail l))
+in map (lambda x:Nat. succ x) (cons 1 (cons 2 (nil Nat)))

@@ -12,6 +12,11 @@
 %token SUCC
 %token PRED
 %token ISZERO
+%token ISNIL
+%token HEAD
+%token TAIL
+%token CONS
+%token NIL
 %token LET
 %token LETREC
 %token IN
@@ -19,6 +24,7 @@
 %token BOOL
 %token NAT
 %token STRING
+%token LIST
 %token QUIT
 %token FIN
 
@@ -73,6 +79,14 @@ appTerm :
       { TmPred $2 }
   | ISZERO atomicTerm
       { TmIsZero $2 }
+  | ISNIL atomicTerm
+      { TmIsNil $2 }
+  | HEAD atomicTerm
+      { TmHead $2 }
+  | TAIL atomicTerm
+      { TmTail $2 }
+  | CONS atomicTerm atomicTerm
+      { TmCons ($2, $3) }
   | CONCAT atomicTerm atomicTerm
       { TmConcat ($2, $3) }
   | appTerm atomicTerm
@@ -102,6 +116,8 @@ atomicTerm :
         in f $1 }
   | STRINGV
       { TmString $1 }
+  | NIL ty
+      { TmNil $2 }
 
 term_list :
     term
@@ -132,3 +148,5 @@ atomicTy :
       { TyNat }
   | STRING
       { TyString }
+  | LIST atomicTy
+      { TyList $2 }
