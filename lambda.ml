@@ -5,6 +5,7 @@ type ty =
   | TyString
   | TyList of ty
   | TyTuple of ty list 
+  | TyRecord of (string * ty) list
 ;;
 
 
@@ -20,17 +21,19 @@ type term =
   | TmAbs of string * ty * term
   | TmApp of term * term
   | TmLetIn of string * term * term
-  | TmFix of term (* RECUSIVIDAD*)
+  | TmFix of term (* RECUSIVIDAD *)
   | TmString of string
   | TmConcat of term * term 
   | TmTuple of term list
+  | TmRecord of (string * term) list
   | TmProj of term * int
+  | TmRProj of term * string
   | TmNil of ty
   | TmCons of term * term
   | TmIsNil of term
   | TmHead of term
   | TmTail of term
-;;
+;; 
 
 type command =
     Eval of term
@@ -91,6 +94,9 @@ let rec string_of_ty ty = match ty with
         |> String.concat ", "
       in
       "{" ^ string_of_ty_list ty_list ^ "}"
+  | TyRecord field_list ->
+      let s_list = List.map (fun (label, ty) -> label ^ " : " ^ (string_of_ty ty)) field_list in
+      "{" ^ (String.concat ", " s_list) ^ "}"
 ;;
 
 exception Type_error of string
@@ -110,6 +116,15 @@ let rec subtype tyS tyT =
         | t_hd :: t_tl, s_hd :: s_tl -> subtype s_hd t_hd && aux s_tl t_tl
       in
       aux s_list t_list
+  | TyRecord s_fields, TyRecord t_fields ->
+      let check_fields (t_label, t_ty) =
+        try
+          let s_ty = List.assoc t_label s_fields in
+          subtype s_ty t_ty
+        with Not_found ->
+          false
+        in
+        List.for_all check_fields t_fields
   | _ -> false
 ;;
 
@@ -226,6 +241,20 @@ let rec typeof ctx tm = match tm with
       (match typeof ctx t1 with
        | TyList ty_elem -> TyList ty_elem
        | _ -> raise (Type_error "argument of tail is not a list"))
+  (* T-RCD *)
+  | TmRecord fields ->
+      let ty_fields = List.map (fun (s, t) -> (s, typeof ctx t)) fields in
+      TyRecord ty_fields
+  | TmRProj (t, label) ->
+      let ty_t = typeof ctx t in
+      (match ty_t with
+       | TyRecord ty_fields ->
+          (try
+            List.assoc label ty_fields
+          with Not_found -> 
+            raise (Type_error ("Label " ^ label ^ " not found in record type"))
+          )
+       | _ -> raise (Type_error "Term projected is not a record"))
 
 ;;
 
@@ -271,6 +300,15 @@ let rec string_of_term tm =
         fprintf fmt "{%a}" pp_elems ts
     | TmProj (t', i) ->
         paren prec_proj (fun () -> fprintf fmt "%a.%d" (pp_term prec_proj) t' i)
+    | TmRecord field_list ->
+      let rec pp_fields fmt = function
+          | [] -> ()
+          | [(label, t)] -> fprintf fmt "%s = %a" label (pp_term prec_atom) t
+          | (label, t) :: xs -> fprintf fmt "%s = %a, %a" label (pp_term prec_atom) t pp_fields xs
+        in
+        fprintf fmt "{%a}" pp_fields field_list
+    | TmRProj (t1, label) ->
+        paren prec_proj (fun () -> fprintf fmt "%a.%s" (pp_term prec_proj) t1 label)
     | TmIf (t1, t2, t3) ->
         paren prec_if (fun () ->
           fprintf fmt "@[<v 2>if %a@ then %a@ else %a@]"
@@ -362,6 +400,10 @@ let rec free_vars tm = match tm with
 
   | TmProj (t, i) ->
       free_vars t
+  | TmRecord field_list ->
+      List.fold_left (fun acc (_, t) -> lunion acc (free_vars t)) [] field_list
+  | TmRProj (t1, _) -> 
+      free_vars t1
   | TmNil _ ->
       []
   | TmCons (t1, t2) ->
@@ -424,6 +466,10 @@ let rec subst x s tm = match tm with
 
   | TmProj (t, i) ->
       TmProj (subst x s t, i)
+  | TmRecord field_list ->
+      let new_fields = List.map (fun (label, t) -> (label, subst x s t)) field_list in
+      TmRecord new_fields
+  | TmRProj (t1, label) -> TmRProj (subst x s t1, label)
   | TmNil ty_elem ->
       TmNil ty_elem
   | TmCons (t1, t2) ->
@@ -449,6 +495,7 @@ let rec isval tm = match tm with
   | TmString _ -> true
   | t when isnumericval t -> true
   | TmTuple term_list ->  List.for_all isval term_list
+  | TmRecord fields -> List.for_all (fun (_, t) -> isval t) fields
   | TmNil _ -> true
   | TmCons (t1, t2) -> isval t1 && isval t2
   | _ -> false
@@ -597,7 +644,31 @@ let rec eval1 ctx tm = match tm with
               TmTuple ((List.rev evaluated) @ [t'] @ rest_of_terms)
       in
       aux [] term_list
-
+  (* E-RCD *)
+  | TmRecord fields ->
+      let rec aux evaluated remaining =
+        match remaining with
+         | [] -> 
+              raise NoRuleApplies
+         | (s, t) :: rest_of_terms ->
+              if isval t then
+                aux ((s, t) :: evaluated) rest_of_terms
+              else
+                let t' = eval1 ctx t in
+                TmRecord ((List.rev evaluated) @ [(s, t')] @ rest_of_terms)
+      in
+      aux [] fields
+  (* E-PROJRCD *)
+  | TmRProj (TmRecord fields, label) ->
+    (try
+      List.assoc label fields
+    with Not_found ->
+      raise NoRuleApplies
+    )
+  (* E-PROJ *)
+  | TmRProj (t, label) ->
+    let t' = eval1 ctx t in
+    TmRProj (t', label)
   | _ ->
       raise NoRuleApplies
 ;;

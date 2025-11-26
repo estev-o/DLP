@@ -97,12 +97,26 @@ appTerm :
   
   | appTerm DOT INTV
       { TmProj ($1, $3)}
+  | appTerm DOT IDV
+      { TmRProj ($1, $3)}
+
+term_field:
+    IDV EQ term
+        { ($1, $3) }
+
+term_field_list:
+    term_field
+        { [$1] }
+ |  term_field_list COMMA term_field
+        { $1 @ [$3] }
 
 atomicTerm :
     LPAREN term RPAREN
       { $2 }
   | LBRACE term_list RBRACE
       { TmTuple $2 }
+  | LBRACE term_field_list RBRACE
+      { TmRecord $2 }
   | TRUE
       { TmTrue }
   | FALSE
@@ -125,6 +139,16 @@ term_list :
   | term_list COMMA term
       { $1 @ [$3] }
 
+ty_field :
+    IDV COLON ty
+        { ($1, $3) }
+
+ty_field_list :
+    ty_field
+        { [$1] }
+ |  ty_field_list COMMA ty_field
+        { $1 @ [$3] }
+
 ty :
     atomicTy
       { $1 }
@@ -132,6 +156,8 @@ ty :
       { TyArr ($1, $3) }
   | LBRACE ty_list RBRACE
       { TyTuple $2 }
+  | LBRACE ty_field_list RBRACE
+      { TyRecord $2}
 
 ty_list :
     ty

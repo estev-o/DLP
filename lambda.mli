@@ -5,6 +5,7 @@ type ty =
   | TyString
   | TyList of ty
   | TyTuple of ty list 
+  | TyRecord of (string * ty) list
 ;;
 
 
@@ -24,7 +25,9 @@ type term =
   | TmString of string
   | TmConcat of term * term 
   | TmTuple of term list
+  | TmRecord of (string * term) list
   | TmProj of term * int
+  | TmRProj of term * string
   | TmNil of ty
   | TmCons of term * term
   | TmIsNil of term
