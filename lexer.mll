@@ -25,6 +25,9 @@ rule token = parse
   | "letrec"    { LETREC }  (*RECUSIVIDAD*)
   | "in"        { IN }
   | "concat"    { CONCAT }
+  | "case"      { CASE }
+  | "of"        { OF }
+  | "as"        { AS }
   | ";;"        { FIN }
   | "Bool"      { BOOL }
   | "Nat"       { NAT }
@@ -35,8 +38,12 @@ rule token = parse
   | ')'         { RPAREN }
   | '{'         { LBRACE }
   | '}'         { RBRACE }
+  | '<'         { LANGLE }
+  | '>'         { RANGLE }
   | ','         { COMMA }
   | '.'         { DOT }
+  | "|"        { BAR }
+  | "=>"       { ARROW2 }
   | '='         { EQ }
   | ':'         { COLON }
   | "->"        { ARROW }

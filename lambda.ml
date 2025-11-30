@@ -6,6 +6,7 @@ type ty =
   | TyList of ty
   | TyTuple of ty list 
   | TyRecord of (string * ty) list
+  | TyVariant of (string * ty) list
 ;;
 
 
@@ -33,6 +34,8 @@ type term =
   | TmIsNil of term
   | TmHead of term
   | TmTail of term
+  | TmVariant of string * term * ty
+  | TmCase of term * (string * string * term) list
 ;; 
 
 type command =
@@ -97,6 +100,9 @@ let rec string_of_ty ty = match ty with
   | TyRecord field_list ->
       let s_list = List.map (fun (label, ty) -> label ^ " : " ^ (string_of_ty ty)) field_list in
       "{" ^ (String.concat ", " s_list) ^ "}"
+  | TyVariant fields ->
+      let s_list = List.map (fun (label, ty) -> label ^ " : " ^ string_of_ty ty) fields in
+      "<" ^ String.concat ", " s_list ^ ">"
 ;;
 
 exception Type_error of string
@@ -255,6 +261,35 @@ let rec typeof ctx tm = match tm with
             raise (Type_error ("Label " ^ label ^ " not found in record type"))
           )
        | _ -> raise (Type_error "Term projected is not a record"))
+  | TmVariant (lbl, t, tyv) ->
+      (match tyv with
+       | TyVariant fields ->
+           let ty_field =
+             try List.assoc lbl fields with Not_found -> raise (Type_error "label not found in variant type")
+           in
+           let ty_t = typeof ctx t in
+           if subtype ty_t ty_field then tyv else raise (Type_error "variant payload does not match declared type")
+       | _ -> raise (Type_error "annotation of variant is not a variant type"))
+  | TmCase (t0, branches) ->
+      let ty_scrutinee = typeof ctx t0 in
+      (match ty_scrutinee with
+       | TyVariant fields ->
+           let branch_ty lbl var body =
+             try
+               let ty_field = List.assoc lbl fields in
+               let ctx' = addtbinding ctx var ty_field in
+               typeof ctx' body
+             with Not_found -> raise (Type_error "case branch label not in variant type")
+           in
+           let res_tys = List.map (fun (lbl, var, body) -> (lbl, branch_ty lbl var body)) branches in
+           (* nos aseguramos que los tipos sean iguales *)
+           (match res_tys with
+            | [] -> raise (Type_error "empty case branches")
+            | (_, ty_first) :: rest ->
+                if List.for_all (fun (_, ty_b) -> subtype ty_b ty_first && subtype ty_first ty_b) rest
+                then ty_first
+                else raise (Type_error "case branches return different types"))
+       | _ -> raise (Type_error "case on non-variant type"))
 
 ;;
 
@@ -309,6 +344,18 @@ let rec string_of_term tm =
         fprintf fmt "{%a}" pp_fields field_list
     | TmRProj (t1, label) ->
         paren prec_proj (fun () -> fprintf fmt "%a.%s" (pp_term prec_proj) t1 label)
+    | TmVariant (lbl, t1, tyv) ->
+        fprintf fmt "<%s = %a> as %s" lbl (pp_term prec_atom) t1 (string_of_ty tyv)
+    | TmCase (t0, branches) ->
+        let pp_branch fmt (lbl, var, body) =
+          fprintf fmt "<%s = %s> => %a" lbl var (pp_term prec_if) body
+        in
+        let rec pp_branches fmt = function
+          | [] -> ()
+          | [b] -> pp_branch fmt b
+          | b :: rest -> fprintf fmt "%a | %a" pp_branch b pp_branches rest
+        in
+        paren prec_if (fun () -> fprintf fmt "@[<v 2>case %a of@ %a@]" (pp_term prec_if) t0 pp_branches branches)
     | TmIf (t1, t2, t3) ->
         paren prec_if (fun () ->
           fprintf fmt "@[<v 2>if %a@ then %a@ else %a@]"
@@ -414,6 +461,14 @@ let rec free_vars tm = match tm with
       free_vars t1
   | TmTail t1 ->
       free_vars t1
+  | TmVariant (_, t1, _) ->
+      free_vars t1
+  | TmCase (t0, branches) ->
+      let branch_vars =
+        List.fold_left lunion []
+          (List.map (fun (_, var, body) -> ldif (free_vars body) [var]) branches)
+      in
+      lunion (free_vars t0) branch_vars
 ;;
 
 let rec fresh_name x l =
@@ -480,6 +535,11 @@ let rec subst x s tm = match tm with
       TmHead (subst x s t1)
   | TmTail t1 ->
       TmTail (subst x s t1)
+  | TmVariant (lbl, t1, tyv) ->
+      TmVariant (lbl, subst x s t1, tyv)
+  | TmCase (t0, branches) ->
+      let branches' = List.map (fun (lbl, var, body) -> if var = x then (lbl, var, body) else (lbl, var, subst x s body)) branches in
+      TmCase (subst x s t0, branches')
 ;;
 
 let rec isnumericval tm = match tm with
@@ -498,6 +558,7 @@ let rec isval tm = match tm with
   | TmRecord fields -> List.for_all (fun (_, t) -> isval t) fields
   | TmNil _ -> true
   | TmCons (t1, t2) -> isval t1 && isval t2
+  | TmVariant (_, v, _) -> isval v
   | _ -> false
 ;;
 
@@ -620,6 +681,22 @@ let rec eval1 ctx tm = match tm with
   | TmTail t1 ->
       let t1' = eval1 ctx t1 in
       TmTail t1'
+
+  | TmVariant (lbl, t1, tyv) when not (isval t1) ->
+      let t1' = eval1 ctx t1 in
+      TmVariant (lbl, t1', tyv)
+
+  | TmCase (TmVariant (lbl, v, _), branches) when isval v ->
+      let rec find = function
+        | [] -> None
+        | (l, var, body) :: rest -> if l = lbl then Some (var, body) else find rest
+      in
+      (match find branches with
+       | Some (var, body) -> subst var v body
+       | None -> raise NoRuleApplies)
+  | TmCase (t0, branches) ->
+      let t0' = eval1 ctx t0 in
+      TmCase (t0', branches)
 
   (* E-ProjTuple*)
   | TmProj (TmTuple t, i) ->
