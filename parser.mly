@@ -62,6 +62,10 @@ s :
 command :
     IDV COLON ty EQ term
         { Bind ($1, $3, $5) }
+  | IDV EQ term
+        { BindInfer ($1, $3) }
+  | IDV EQ ty
+        { TypeBind ($1, $3) }
   | term
         { Eval $1 }
   | QUIT
@@ -189,6 +193,8 @@ atomicTy :
       { TyString }
   | LIST atomicTy
       { TyList $2 }
+  | IDV
+      { TyVar $1 }
 
 var_fields :
     IDV COLON ty

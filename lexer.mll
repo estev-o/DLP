@@ -48,7 +48,7 @@ rule token = parse
   | ':'         { COLON }
   | "->"        { ARROW }
   | ['0'-'9']+  { INTV (int_of_string (Lexing.lexeme lexbuf)) }
-  | ['a'-'z']['a'-'z' '_' '0'-'9']*
+  | ['a'-'z' 'A'-'Z']['a'-'z' 'A'-'Z' '_' '0'-'9']*
                 { IDV (Lexing.lexeme lexbuf) }
   | '"'[^ '"' ';' '\n']*'"'
                 { let s = Lexing.lexeme lexbuf in

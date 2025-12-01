@@ -7,6 +7,7 @@ type ty =
   | TyTuple of ty list 
   | TyRecord of (string * ty) list
   | TyVariant of (string * ty) list
+  | TyVar of string
 ;;
 
 
@@ -42,6 +43,8 @@ type term =
 type command =
     Eval of term
   | Bind of string * ty * term
+  | BindInfer of string * term
+  | TypeBind of string * ty
   | Quit
 ;;
 

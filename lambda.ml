@@ -7,6 +7,7 @@ type ty =
   | TyTuple of ty list 
   | TyRecord of (string * ty) list
   | TyVariant of (string * ty) list
+  | TyVar of string
 ;;
 
 
@@ -41,6 +42,8 @@ type term =
 type command =
     Eval of term
   | Bind of string * ty * term
+  | BindInfer of string * term
+  | TypeBind of string * ty
   | Quit
 ;;
 type binding =
@@ -103,9 +106,22 @@ let rec string_of_ty ty = match ty with
   | TyVariant fields ->
       let s_list = List.map (fun (label, ty) -> label ^ " : " ^ string_of_ty ty) fields in
       "<" ^ String.concat ", " s_list ^ ">"
+  | TyVar s ->
+      s
 ;;
 
 exception Type_error of string
+;;
+
+let rec expand_ty ctx ty = match ty with
+  | TyVar s ->
+      (try gettbinding ctx s with _ -> raise (Type_error ("unbound type variable: " ^ s)))
+  | TyArr (ty1, ty2) -> TyArr (expand_ty ctx ty1, expand_ty ctx ty2)
+  | TyList ty1 -> TyList (expand_ty ctx ty1)
+  | TyTuple tys -> TyTuple (List.map (expand_ty ctx) tys)
+  | TyRecord fields -> TyRecord (List.map (fun (l, t) -> (l, expand_ty ctx t)) fields)
+  | TyVariant fields -> TyVariant (List.map (fun (l, t) -> (l, expand_ty ctx t)) fields)
+  | _ -> ty
 ;;
 
 let rec subtype tyS tyT =
@@ -178,9 +194,10 @@ let rec typeof ctx tm = match tm with
 
     (* T-Abs *)
   | TmAbs (x, tyT1, t2) ->
-      let ctx' = addtbinding ctx x tyT1 in
+      let tyT1_expanded = expand_ty ctx tyT1 in
+      let ctx' = addtbinding ctx x tyT1_expanded in
       let tyT2 = typeof ctx' t2 in
-      TyArr (tyT1, tyT2)
+      TyArr (tyT1_expanded, tyT2)
 
     (* T-App *)
   | TmApp (t1, t2) ->
@@ -227,7 +244,7 @@ let rec typeof ctx tm = match tm with
         | _ -> raise (Type_error "Term projected is not a tuple"))
 
   | TmNil ty_elem ->
-      TyList ty_elem
+      TyList (expand_ty ctx ty_elem)
   | TmCons (t1, t2) ->
       let ty_head = typeof ctx t1 in
       let ty_tail = typeof ctx t2 in
@@ -262,13 +279,14 @@ let rec typeof ctx tm = match tm with
           )
        | _ -> raise (Type_error "Term projected is not a record"))
   | TmVariant (lbl, t, tyv) ->
-      (match tyv with
+      let tyv_expanded = expand_ty ctx tyv in
+      (match tyv_expanded with
        | TyVariant fields ->
            let ty_field =
              try List.assoc lbl fields with Not_found -> raise (Type_error "label not found in variant type")
            in
            let ty_t = typeof ctx t in
-           if subtype ty_t ty_field then tyv else raise (Type_error "variant payload does not match declared type")
+           if subtype ty_t ty_field then tyv_expanded else raise (Type_error "variant payload does not match declared type")
        | _ -> raise (Type_error "annotation of variant is not a variant type"))
   | TmCase (t0, branches) ->
       let ty_scrutinee = typeof ctx t0 in
@@ -768,12 +786,22 @@ let execute ctx = function
       print_endline ("- : " ^ string_of_ty tyTm ^ " = " ^ string_of_term tm');
       ctx
   | Bind (s, ty, tm) ->
+      let ty_expanded = expand_ty ctx ty in
       let tyTm = typeof ctx tm in
-      if subtype tyTm ty then
+      if subtype tyTm ty_expanded then
         let tm' = eval ctx tm in
         print_endline (s ^ " : " ^ string_of_ty tyTm ^ " = " ^ string_of_term tm');
         addvbinding ctx s tyTm tm'
       else
-        raise (Type_error ("Type mismatch in binding: expected " ^ string_of_ty ty ^ " but got " ^ string_of_ty tyTm))
+        raise (Type_error ("Type mismatch in binding: expected " ^ string_of_ty ty_expanded ^ " but got " ^ string_of_ty tyTm))
+  | BindInfer (s, tm) ->
+      let tyTm = typeof ctx tm in
+      let tm' = eval ctx tm in
+      print_endline (s ^ " : " ^ string_of_ty tyTm ^ " = " ^ string_of_term tm');
+      addvbinding ctx s tyTm tm'
+  | TypeBind (s, ty) ->
+      let ty_expanded = expand_ty ctx ty in
+      print_endline ("type " ^ s ^ " = " ^ string_of_ty ty_expanded);
+      addtbinding ctx s ty_expanded
   | Quit ->
     raise End_of_file
