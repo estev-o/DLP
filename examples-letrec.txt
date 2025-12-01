@@ -1,1 +1,56 @@
-letrec sum : Nat -> Nat -> Nat = lambda n : Nat. lambda m : Nat. if iszero n then m else succ (sum (pred n) m) in sum 3 5;;
+letrec sum : Nat -> Nat -> Nat = 
+    lambda n : Nat. lambda m : Nat.
+        if iszero n then
+            m
+        else
+            succ (sum (pred n) m)
+in sum 3 5;;
+
+letrec prod : Nat -> Nat -> Nat =
+  lambda n : Nat. lambda m : Nat.
+    if iszero n
+    then 0
+    else
+      letrec sum : Nat -> Nat -> Nat =
+        lambda x : Nat. lambda y : Nat.
+          if iszero x
+          then y
+          else succ (sum (pred x) y)
+      in sum m (prod (pred n) m)
+in prod 3 5;;
+
+letrec fib : Nat -> Nat =
+  lambda n : Nat.
+    if iszero n then 0
+    else if iszero (pred n) then 1
+    else
+        letrec sum : Nat -> Nat -> Nat =
+            lambda x : Nat. lambda y : Nat.
+            if iszero x
+            then y
+            else succ (sum (pred x) y)
+        in
+        let n1 = pred n in
+        let n2 = pred n1 in
+        sum (fib n1) (fib n2)
+in fib 7;;
+
+letrec fact : Nat -> Nat =
+  lambda n : Nat.
+    if iszero n then 
+        succ 0
+    else
+        letrec add : Nat -> Nat -> Nat =
+        lambda x : Nat. lambda y : Nat.
+            if iszero x
+            then y
+            else succ (add (pred x) y)
+        in
+        letrec mul : Nat -> Nat -> Nat =
+            lambda a : Nat. lambda b : Nat.
+                if iszero a
+                then 0
+                else add b (mul (pred a) b)
+            in
+        mul n (fact (pred n))
+in fact 5;;
