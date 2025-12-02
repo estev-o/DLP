@@ -22,7 +22,7 @@ rule token = parse
   | "cons"      { CONS }
   | "nil"       { NIL }
   | "let"       { LET }  
-  | "letrec"    { LETREC }  (*RECUSIVIDAD*)
+  | "letrec"    { LETREC }  (*RECURSIVITY*)
   | "in"        { IN }
   | "concat"    { CONCAT }
   | "case"      { CASE }

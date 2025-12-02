@@ -54,6 +54,3 @@ letrec map : (Nat -> Nat) -> List Nat -> List Nat =
     if isnil l then nil Nat else cons (f (head l)) (map f (tail l))
 
 
-VARIANTS
-let v = <left = 1> as <left:Nat, right:Bool> in case v of <left = x> => x | <right = y> => if y then 1 else 0
-let chooser = lambda w: <a:Nat, b:Nat>. case w of <a = x> => x | <b = y> => succ y in chooser (<b = 2> as <a:Nat, b:Nat>)

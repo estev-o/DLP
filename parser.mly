@@ -51,7 +51,7 @@
 %token <string> STRINGV
 
 %start s
-%type <Lambda.command> s //antes era <Lambda.term>
+%type <Lambda.command> s //It used to be<Lambda.term>
 
 %%
 

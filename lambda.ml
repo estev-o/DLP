@@ -651,10 +651,10 @@ let rec eval1 ctx tm = match tm with
       let t1' = eval1 ctx t1 in
       TmLetIn (x, t1', t2)
 
-    (* E-FixBeta RECURSIVIDAD *)
+    (* E-FixBeta RECURSIVITY *)
   | TmFix (TmAbs (x, _, t2)) ->
       subst x tm t2 
-    (* E-Fix RECURSIVIDAD*)
+    (* E-Fix RECURSIVITY*)
   | TmFix t1 ->
       let t1' = eval1 ctx t1 in
       TmFix t1'

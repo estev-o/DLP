@@ -1,6 +1,3 @@
-# Trabajamos con sustituiones lineales
-# Ya hemos implementado Recursividad con fix
-# Ya hemos implementado lo de meterle contexto pero falta implementar lo de meter alias a tipos
 # N = Nat
 # NinN = Nat in Nat
 all: lambda parser lexer main
